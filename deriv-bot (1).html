@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="SnD Bot">
+<meta name="theme-color" content="#10201b">
+<title>SnD/ICT Deriv Bot</title>
+<style>
+:root{--bg:#10201b;--panel:#17302a;--ink:#eef3ef;--mute:#8fa89d;--gold:#d4a937;--up:#4cc38a;--dn:#e5605a;--line:#27463d;color-scheme:dark}
+@media (prefers-color-scheme:light){:root:not([data-theme=dark]){--bg:#f1f4ef;--panel:#fff;--ink:#14231e;--mute:#5d746a;--gold:#9a7410;--up:#16875a;--dn:#c23a34;--line:#d3ddd6;color-scheme:light}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 Georgia,"Iowan Old Style",serif}
+body{padding:calc(env(safe-area-inset-top,0px) + 14px) 14px calc(env(safe-area-inset-bottom,0px) + 24px);max-width:560px;margin:auto}
+h1{font-size:1.5rem;margin:0 0 2px;letter-spacing:-.01em}
+h2{font-size:1.05rem;margin:0 0 10px;color:var(--gold)}
+p.s{margin:0 0 14px;color:var(--mute);font-size:.9rem}
+section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:12px}
+label{display:block;font:.8rem system-ui,sans-serif;color:var(--mute);margin:8px 0 3px}
+select,input[type=text],input[type=password],input[type=number]{width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:1rem system-ui,sans-serif}
+.g{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sym{display:grid;grid-template-columns:auto 1fr 86px;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--line);font-family:system-ui,sans-serif}
+.sym:first-of-type{border-top:0}
+button{width:100%;padding:14px;border:0;border-radius:10px;font:600 1rem system-ui,sans-serif;background:var(--gold);color:#10201b;margin-top:6px}
+button.stop{background:var(--dn);color:#fff}
+button:focus-visible,input:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.st{display:flex;justify-content:space-between;font:.85rem system-ui,sans-serif;color:var(--mute)}
+.pos{padding:8px 0;border-top:1px solid var(--line);font:.88rem system-ui,sans-serif;display:flex;justify-content:space-between;gap:8px}
+.up{color:var(--up)}.dn{color:var(--dn)}
+#log{font:.78rem/1.5 ui-monospace,Menlo,monospace;max-height:260px;overflow:auto;white-space:pre-wrap;color:var(--mute)}
+.warn{font:.8rem system-ui,sans-serif;color:var(--mute);border-left:3px solid var(--gold);padding-left:10px}
+</style>
+</head>
+<body>
+<h1>Supply &amp; Demand / ICT Bot</h1>
+<p class="s">Gold, Volatility 25, 75 and 100. Fixed 3:1 reward to risk, closed automatically.</p>
+
+<section>
+<h2>Account</h2>
+<label for="tok">Deriv API token (needs Read + Trade). Use a demo account first.</label>
+<input id="tok" type="password" autocomplete="off" placeholder="Paste token">
+<label for="ep">Connection type</label>
+<select id="ep">
+<option value="legacy1">Classic API (ws.derivws.com)</option>
+<option value="legacy2">Classic API (ws.binaryws.com)</option>
+<option value="new">New Deriv API (token + registered App ID)</option>
+</select>
+<label for="app">App ID (1089 works for the Classic API only)</label>
+<input id="app" type="text" value="1089" inputmode="numeric">
+<div id="acctw" hidden><label for="acct">Account ID (New API only, e.g. DOT12345678)</label>
+<input id="acct" type="text" autocomplete="off"></div>
+<div class="st" style="margin-top:10px"><span id="conn">Disconnected</span><span id="bal">Balance: –</span></div>
+</section>
+
+<section>
+<h2>Markets</h2>
+<div id="syms"></div>
+<p class="warn" style="margin-top:8px">Multiplier values must be allowed by Deriv for each market. If a trade is rejected, the log shows the allowed values.</p>
+</section>
+
+<section>
+<h2>Risk</h2>
+<div class="g">
+<div><label for="stake">Stake per trade</label><input id="stake" type="number" value="10" min="1" step="1"></div>
+<div><label for="score">Min setup score (2–4)</label><input id="score" type="number" value="3" min="2" max="4"></div>
+<div><label for="maxm">Auto close after (min)</label><input id="maxm" type="number" value="180" min="5"></div>
+<div><label for="maxt">Max trades per day</label><input id="maxt" type="number" value="6" min="1"></div>
+<div><label for="dl">Daily loss limit</label><input id="dl" type="number" value="30" min="1"></div>
+<div><label for="tf">Timeframe</label><input id="tf" type="number" value="5" min="1" max="60"></div>
+</div>
+<p class="warn" style="margin-top:10px">Stop loss sits beyond the zone. Take profit is exactly 3 times that distance. Deriv enforces both on its servers, so they hold even if your phone sleeps.</p>
+</section>
+
+<button id="go">Start bot</button>
+
+<section style="margin-top:12px">
+<h2>Open trades</h2>
+<div id="open"><span class="st">None</span></div>
+<div class="st" style="margin-top:8px"><span id="cnt">Trades today: 0</span><span id="pnl">P/L today: 0.00</span></div>
+</section>
+
+<section>
+<h2>Activity</h2>
+<div id="log"></div>
+</section>
+
+<p class="warn">Trading multipliers carries a high risk of loss. A 3:1 ratio does not make a strategy profitable; it still needs a win rate above 25%. Test on demo and watch the results before using real money. This is not financial advice.</p>
+
+<script>
+"use strict";
+const SYMS={
+  frxXAUUSD:{name:"Gold (XAU/USD)",mult:100,on:true},
+  R_25:{name:"Volatility 25",mult:160,on:true},
+  R_75:{name:"Volatility 75",mult:50,on:true},
+  R_100:{name:"Volatility 100",mult:40,on:true}
+};
+const $=id=>document.getElementById(id);
+let ws,running=false,cur="USD",req=1,pingT;
+const candles={},lastOpen={},open={};
+let tradesToday=0,pnlToday=0,dayKey=new Date().toDateString();
+
+// ---------- UI ----------
+$("syms").innerHTML=Object.entries(SYMS).map(([k,v])=>
+ `<div class="sym"><input type="checkbox" id="c_${k}" ${v.on?"checked":""} aria-label="${v.name}"><span>${v.name}</span><input type="number" id="m_${k}" value="${v.mult}" aria-label="${v.name} multiplier"></div>`).join("");
+function log(m){const l=$("log");l.textContent=new Date().toLocaleTimeString()+"  "+m+"\n"+l.textContent.slice(0,6000)}
+function num(id){return parseFloat($(id).value)}
+$("go").onclick=()=>running?stopBot():startBot();
+
+// ---------- connection ----------
+function send(o){o.req_id=req++;ws.send(JSON.stringify(o))}
+async function startBot(){
+  const t=$("tok").value.trim(),app=($("app").value||"1089").trim(),mode=$("ep").value;
+  if(!t){log("Paste your API token first.");return}
+  running=true;$("go").textContent="Stop bot";$("go").className="stop";$("conn").textContent="Connecting…";
+  let url;
+  try{
+    if(mode==="new"){
+      const acct=$("acct").value.trim();if(!acct)throw new Error("Enter your account ID.");
+      const r=await fetch("https://api.derivws.com/trading/v1/options/accounts/"+encodeURIComponent(acct)+"/otp",{method:"POST",headers:{"Authorization":"Bearer "+t,"Deriv-App-ID":app,"Content-Type":"application/json"}});
+      const j=await r.json().catch(()=>({}));
+      if(!r.ok||!j.data||!j.data.url)throw new Error("Deriv refused the login ("+r.status+") "+JSON.stringify(j).slice(0,200));
+      url=j.data.url;
+    }else url=(mode==="legacy1"?"wss://ws.derivws.com":"wss://ws.binaryws.com")+"/websockets/v3?app_id="+encodeURIComponent(app);
+  }catch(e){log("Login failed: "+e.message+(e.name==="TypeError"?" (the browser blocked the request; open this page from your own hosted link, not a preview)":""));running=false;$("go").textContent="Start bot";$("go").className="";$("conn").textContent="Disconnected";return}
+  let opened=false;
+  ws=new WebSocket(url);
+  ws.onopen=()=>{opened=true;$("conn").textContent="Connected";if(mode==="new")init();else send({authorize:t});pingT=setInterval(()=>ws.readyState==1&&ws.send('{"ping":1}'),25000)};
+  ws.onmessage=e=>handle(JSON.parse(e.data));
+  ws.onclose=ev=>{clearInterval(pingT);$("conn").textContent="Disconnected";
+    if(!opened){log("Could not connect (code "+ev.code+"). Try another Connection type, or open the page from your own hosted link, not inside a preview.");running=false;$("go").textContent="Start bot";$("go").className="";return}
+    if(running){log("Connection lost. Retrying in 5s…");setTimeout(()=>running&&startBot2(),5000)}};
+  ws.onerror=()=>log("Connection error.");
+}
+function init(){
+  send({balance:1,subscribe:1});
+  send({proposal_open_contract:1,subscribe:1});
+  for(const s in SYMS)if($("c_"+s).checked)send({ticks_history:s,adjust_start_time:1,count:300,end:"latest",style:"candles",granularity:num("tf")*60,subscribe:1});
+}
+$("ep").onchange=()=>{$("acctw").hidden=$("ep").value!=="new";if($("ep").value==="new")$("app").value=""};
+function startBot2(){if(!running)return;running=false;startBot()}
+function stopBot(){running=false;$("go").textContent="Start bot";$("go").className="";try{ws.close()}catch(e){}log("Bot stopped. Open trades keep their stop loss and take profit.")}
+
+function handle(m){
+  if(m.error){log("API: "+m.error.message+(m.error.details?" "+JSON.stringify(m.error.details):""));return}
+  switch(m.msg_type){
+    case"authorize":
+      cur=m.authorize.currency;$("conn").textContent="Connected ("+m.authorize.loginid+")";
+      $("bal").textContent="Balance: "+m.authorize.balance+" "+cur;
+      log("Authorized "+m.authorize.loginid+(m.authorize.is_virtual?" (demo)":" (REAL)"));
+      init();
+      break;
+    case"balance":cur=m.balance.currency;$("bal").textContent="Balance: "+m.balance.balance+" "+m.balance.currency;break;
+    case"candles":candles[m.echo_req.ticks_history]=m.candles.map(c=>({t:c.epoch,o:+c.open,h:+c.high,l:+c.low,c:+c.close}));
+      lastOpen[m.echo_req.ticks_history]=candles[m.echo_req.ticks_history].at(-1).t;log("Loaded "+m.echo_req.ticks_history);break;
+    case"ohlc":onOhlc(m.ohlc);break;
+    case"buy":log("Opened #"+m.buy.contract_id+" "+m.buy.longcode);break;
+    case"proposal_open_contract":onContract(m.proposal_open_contract);break;
+    case"sell":log("Closed #"+m.sell.contract_id+" at "+m.sell.sold_for);break;
+  }
+}
+
+// ---------- candles ----------
+function onOhlc(o){
+  const s=o.symbol,arr=candles[s];if(!arr)return;
+  const c={t:+o.open_time,o:+o.open,h:+o.high,l:+o.low,c:+o.close};
+  if(c.t===arr.at(-1).t){arr[arr.length-1]=c;return}
+  arr.push(c);if(arr.length>400)arr.shift();
+  analyze(s); // previous candle just closed
+}
+
+// ---------- strategy ----------
+function atr(a,n=14){let s=0;for(let i=a.length-n;i<a.length;i++){const p=a[i-1];s+=Math.max(a[i].h-a[i].l,Math.abs(a[i].h-p.c),Math.abs(a[i].l-p.c))}return s/n}
+function ema(a,n){const k=2/(n+1);let e=a[0].c;for(const x of a)e=x.c*k+e*(1-k);return e}
+
+function analyze(s){
+  if(!running||open[s])return;
+  const today=new Date().toDateString();if(today!==dayKey){dayKey=today;tradesToday=0;pnlToday=0;upd()}
+  if(tradesToday>=num("maxt")||pnlToday<=-num("dl"))return;
+  const all=candles[s];if(all.length<80)return;
+  const a=all.slice(0,-1); // closed candles only
+  const A=atr(a),L=a.at(-1),e50=ema(a.slice(-120),50);
+  const minScore=num("score");
+  // Find fresh supply/demand zones created by displacement candles
+  for(let i=a.length-3;i>=Math.max(20,a.length-120);i--){
+    const d=a[i],body=Math.abs(d.c-d.o);
+    if(body<1.8*A)continue;
+    const bull=d.c>d.o,b=a[i-1];
+    const zLo=bull?b.l:Math.min(b.o,b.c),zHi=bull?Math.max(b.o,b.c):b.h;
+    // untouched since creation (except the latest candle)
+    let fresh=true;
+    for(let j=i+1;j<a.length-1;j++){if(bull?a[j].l<=zHi:a[j].h>=zLo){fresh=false;break}}
+    if(!fresh)continue;
+    // retest on the last closed candle with a rejection close
+    const touch=bull?(L.l<=zHi&&L.c>zHi&&L.c>L.o):(L.h>=zLo&&L.c<zLo&&L.c<L.o);
+    if(!touch)continue;
+    let score=1;const why=["zone retest"];
+    // ICT: fair value gap left by the displacement
+    const f=a[i+1],p=a[i-1];
+    if(f&&(bull?f.l>p.h:f.h<p.l)){score++;why.push("FVG")}
+    // ICT: liquidity sweep of the prior 20 candle extreme within last 8 candles
+    for(let k=a.length-8;k<a.length;k++){
+      const prev=a.slice(k-20,k);
+      if(bull){const lo=Math.min(...prev.map(x=>x.l));if(a[k].l<lo&&a[k].c>lo){score++;why.push("sell-side sweep");break}}
+      else{const hi=Math.max(...prev.map(x=>x.h));if(a[k].h>hi&&a[k].c<hi){score++;why.push("buy-side sweep");break}}
+    }
+    // Bias: trade with the 50 EMA
+    if(bull?L.c>e50:L.c<e50){score++;why.push("trend")}
+    if(score<minScore)continue;
+    enter(s,bull,L.c,bull?Math.min(zLo,L.l)-0.25*A:Math.max(zHi,L.h)+0.25*A,score,why.join(", "));
+    return;
+  }
+}
+
+function enter(s,bull,entry,sl,score,why){
+  const dist=Math.abs(entry-sl),stake=num("stake"),mult=num("m_"+s);
+  const slAmt=stake*mult*dist/entry;        // loss in account currency if stop is hit
+  const tpAmt=slAmt*3;                       // 3:1 reward to risk
+  if(slAmt>stake*0.95){log(s+": setup skipped, stop too wide for stake × multiplier. Lower the multiplier.");return}
+  if(slAmt<0.01){log(s+": setup skipped, stop too tight.");return}
+  open[s]={pending:true};tradesToday++;upd();
+  log(`${s} ${bull?"BUY":"SELL"} score ${score} (${why}) risk ${slAmt.toFixed(2)} target ${tpAmt.toFixed(2)}`);
+  send({buy:1,price:stake,parameters:{amount:stake,basis:"stake",contract_type:bull?"MULTUP":"MULTDOWN",currency:cur,symbol:s,multiplier:mult,
+    limit_order:{stop_loss:+slAmt.toFixed(2),take_profit:+tpAmt.toFixed(2)}}});
+  setTimeout(()=>{if(open[s]&&open[s].pending)delete open[s]},8000);
+}
+
+// ---------- open trades & auto close ----------
+function onContract(c){
+  if(!c||!c.contract_id)return;
+  const s=c.underlying;
+  if(c.is_sold){
+    if(open[s]&&open[s].id===c.contract_id||open[s]?.pending){pnlToday+=+c.profit;delete open[s];upd();
+      log(`Closed ${s} P/L ${(+c.profit).toFixed(2)} (${c.status})`)}
+    render();return}
+  open[s]={id:c.contract_id,profit:+c.profit,start:c.date_start,type:c.contract_type};
+  const mins=(Date.now()/1000-c.date_start)/60;
+  if(mins>=num("maxm")&&c.is_valid_to_sell&&!open[s].closing){open[s].closing=true;log("Time limit reached, closing "+s);send({sell:c.contract_id,price:0})}
+  render();
+}
+function render(){
+  const e=Object.entries(open).filter(([k,v])=>v.id);
+  $("open").innerHTML=e.length?e.map(([k,v])=>`<div class="pos"><span>${SYMS[k]?.name||k} ${v.type==="MULTUP"?"Buy":"Sell"}</span><span class="${v.profit>=0?"up":"dn"}">${v.profit.toFixed(2)}</span></div>`).join(""):'<span class="st">None</span>';
+}
+function upd(){$("cnt").textContent="Trades today: "+tradesToday;const p=$("pnl");p.textContent="P/L today: "+pnlToday.toFixed(2);p.className=pnlToday>=0?"up":"dn"}
+// Re-check time-based closes between candle updates
+setInterval(()=>{for(const s in open){const v=open[s];if(v.id&&!v.closing&&(Date.now()/1000-v.start)/60>=num("maxm")&&ws&&ws.readyState==1){v.closing=true;log("Time limit reached, closing "+s);send({sell:v.id,price:0})}}},15000);
+</script>
+</body>
+</html>
